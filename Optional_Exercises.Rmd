@@ -1,0 +1,40 @@
+---
+title: 'Rec Engines: Optional Exercises'
+author: 'Marang Mutloatse'
+output:
+  html_document:
+    code_folding: hide
+  pdf_document: default
+---
+<style type="text/css">
+
+h1.title {
+  font-size: 38px;
+  text-align: center;
+}
+h4.author { 
+    font-size: 22px;
+  font-family: "Times New Roman", Times, serif;
+  text-align: center;
+}
+h4.date { 
+  font-size: 22px;
+  font-family: "Times New Roman", Times, serif;
+  text-align: center;
+}
+</style>
+
+<style type="text/css">
+  body {
+    background-color: #F6F6F4;
+  }
+</style>
+
+```{r include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(recommenderlab)
+library(dplyr)
+library(data.table)
+library(class)
+```
+
