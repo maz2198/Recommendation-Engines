@@ -1,0 +1,213 @@
+---
+title: 'Rec Engines: Optional Exercise'
+author: 'Marang Mutloatse'
+date: "3/15/2020"
+output:
+  html_document:
+    code_folding: hide
+  pdf_document: default
+---
+<style type="text/css">
+
+h1.title {
+  font-size: 38px;
+  text-align: center;
+}
+h4.author { 
+    font-size: 22px;
+  font-family: "Times New Roman", Times, serif;
+  text-align: center;
+}
+h4.date { 
+  font-size: 22px;
+  font-family: "Times New Roman", Times, serif;
+  text-align: center;
+}
+</style>
+
+<style type="text/css">
+  body {
+    background-color: #F6F6F4;
+  }
+</style>
+
+```{r include=FALSE}
+library(recommenderlab)
+library(dplyr)
+library(data.table)
+library(class)
+library(arules)
+library(arulesViz)
+```
+
+
+## Data Exploration
+
+
+First, the data is loaded from the recommenderlab package.
+
+```{r echo=TRUE}
+data("Groceries")
+Groceries
+```
+
+### Summary
+```{r echo=TRUE}
+groc_summ <- summary(Groceries)
+groc_summ
+```
+
+
+```{r echo=TRUE}
+inspect(Groceries[1:10])
+```
+
+```{r echo=TRUE, fig.align='center'}
+itemFrequencyPlot(Groceries, topN = 15)
+```
+
+
+```{r echo=TRUE,fig.align='center'}
+itemFrequencyPlot(Groceries, support = 0.1)
+```
+
+```{r echo=TRUE,fig.align='center'}
+plot(groc_summ@lengths)
+```
+
+
+```{r echo=TRUE}
+itemFrequency(Groceries[,1:5])
+```
+
+### Item Sparsity
+```{r echo=TRUE,fig.align='center'}
+image(sample(Groceries, 100))
+```
+
+The dataset is sparse.
+ # Data Prep
+
+## Association Rules by itself:
+```{r echo=TRUE}
+apriori(Groceries)
+```
+```{r echo=TRUE}
+new_new <- apriori(Groceries, parameter = list(supp = 0.001,
+                                             conf = 0.25,
+                                            minlen = 3))
+new_new
+```
+```{r echo=TRUE}
+summary(new_new)
+```
+
+```{r echo=TRUE}
+inspect(new_new[1:5])
+```
+
+Now, we sort by lift because Lift is a good criteria to filter out rules.
+
+```{r echo=TRUE}
+inspect(sort(new_new, by ="lift")[1:5])
+```
+Now for a comparison study.
+
+# Final model building 
+
+
+```{r include=FALSE}
+groceriesDataset <- as(Groceries, "binaryRatingMatrix")
+```
+
+## Model Tuning
+
+We choose and compare models from the recommenderlab, even if by intution, they are not adequate. 
+
+```{r echo=TRUE}
+recommenderRegistry$get_entries(dataType = "binaryRatingMatrix")
+```
+
+- Alternative Least Squares  
+- Association Rules  
+- Item Based Collaborative Filtering  
+- Popular
+- Random
+- User Based Collaborative Filtering 
+
+IBCF and UBCF are not the best methods because there is no user.
+
+
+ Split into a train and test set, where 25% is reserved for the test set. 
+
+```{r include=FALSE}
+# 80-20 for train and test set
+esSplitGroc <- evaluationScheme(groceriesDataset, method="split", train=0.75, given = -1)
+```
+
+# Parameter Tuning
+```{r echo=TRUE, fig.align='center'}
+vector_nn <- seq(100,1000,100)
+models_to_evaluate <- lapply(vector_nn, function(k){
+  list(name = "UBCF",
+       param = list(nn = k))
+})
+names(models_to_evaluate) <- paste0("UBCF_nn", vector_nn)
+resultsIBCF <- evaluate(esSplitGroc, models_to_evaluate, type = "topNList", n=c(1, 5, 10, 15, 20))
+plot(resultsIBCF, annotate=c(1,2))
+```
+
+
+```{r echo=TRUE,fig.align='center'}
+vector_k <- c(100,150,200,250)
+models_to_evaluateJac <- lapply(vector_k, function(k){
+  list(name = "IBCF",
+       param = list(method = "Jaccard", k = k))
+})
+names(models_to_evaluateJac) <- paste0("IBCF_k_Jac", vector_k)
+models_to_evaluateCos <- lapply(vector_k, function(k){
+  list(name = "IBCF",
+       param = list(method = "cosine", k = k))
+})
+names(models_to_evaluateCos) <- paste0("IBCF_k_Cos", vector_k)
+models_to_evaluate <- append(models_to_evaluateJac, models_to_evaluateCos)
+resultsIBCF <- evaluate(esSplitGroc, models_to_evaluate, type = "topNList", n=c(1, 5, 10, 15, 20))
+plot(resultsIBCF, annotate=c(1,2))
+```
+
+
+## Best Model comparison selection
+
+
+```{r echo=TRUE,fig.align='center'}
+algorithms <- list(
+  "random" = list(name="RANDOM", param=NULL),
+  "popular" = list(name="POPULAR", param=NULL),
+  "UBCF" = list(name="UBCF", param=list(nn=400)),
+  "IBCFJac" = list(name="IBCF", param=list(method = "Jaccard",
+                                           k=150)),
+  "ALS" = list(name = "ALS", param= list()),
+  "AR" = list(name="AR", param = list(support = 0.001, conf = 0.03, maxlen=10))
+)
+resultsGroc <- evaluate(esSplitGroc, algorithms, type = "topNList", n=c(1, 5, 10, 15, 20))
+plot(resultsGroc, annotate=c(1), legend = "topright")
+```
+
+Obtaining many rules with high lift for this particular use case are useful.
+
+```{r echo=TRUE}
+groceriesRecAr2 <- Recommender(groceriesDataset, method = "AR", parameter = list(support = 0.001, conf = 0.001, maxlen = 50))
+arGroceriesModel <- getModel(groceriesRecAr2)$rule_base
+summary(arGroceriesModel)
+rulesDF <- as(arGroceriesModel, "data.frame")
+rulesDF$prior_conf <- rulesDF$confidence / rulesDF$lift
+rulesDF$confidence_diff <- abs(rulesDF$confidence - rulesDF$prior_conf)
+rulesDF$confidence_ratio <- 1- (apply(rulesDF[,c(3,7)], 1, min) / apply(rulesDF[,c(3,7)], 1, max) )
+# Top 20 according to each AR metric
+head(rulesDF[order(rulesDF$lift, decreasing = T),],20)
+head(rulesDF[order(rulesDF$confidence_ratio, decreasing = T),],20)
+head(rulesDF[order(rulesDF$confidence_diff, decreasing = T),],20) # Rules with longer LHS usually have higher confidence_difference
+head(rulesDF[order(rulesDF$confidence, decreasing = T),],20) 
+head(rulesDF[order(rulesDF$support, decreasing = T),],20)
+```
+An extensive study of various algorithms for the groceries dataset was completed.
